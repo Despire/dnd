@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -55,13 +56,13 @@ func add(w io.Writer, r io.Reader, args ...string) {
 		return
 	}
 
-	c, err := ReadConfig()
+	c, err := restrictions.ReadConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(w, "failed to read config %s: %v\n", MustConfigPath(), err)
+			fmt.Fprintf(w, "failed to read config %s: %v\n", restrictions.ConfigPath(), err)
 			return
 		}
-		c = &Config{Restrictions: make(map[restrictions.Type]restrictions.List)}
+		c = &restrictions.Config{Restrictions: make(map[restrictions.Type]restrictions.List)}
 	}
 
 	processed := 0
@@ -97,6 +98,9 @@ func add(w io.Writer, r io.Reader, args ...string) {
 				continue
 			}
 			item = apps[selected-1].program
+			if selected != len(apps) {
+				item = filepath.Join(apps[selected-1].dir, apps[selected-1].program)
+			}
 			fmt.Fprintf(w, "option %v will be used to kill any processes that contains the given pattern %q\n", selected, item)
 		}
 
@@ -108,7 +112,7 @@ func add(w io.Writer, r io.Reader, args ...string) {
 		return
 	}
 
-	if err := WriteConfig(c); err != nil {
+	if err := restrictions.WriteConfig(c); err != nil {
 		fmt.Fprintf(w, "failed to update config: %v\n", err)
 		return
 	}
@@ -136,10 +140,10 @@ func del(w io.Writer, args ...string) {
 		return
 	}
 
-	c, err := ReadConfig()
+	c, err := restrictions.ReadConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(w, "failed to read config %s: %v\n", MustConfigPath(), err)
+			fmt.Fprintf(w, "failed to read config %s: %v\n", restrictions.ConfigPath(), err)
 			return
 		}
 		return
@@ -151,13 +155,15 @@ func del(w io.Writer, args ...string) {
 		return
 	}
 
-	for {
-		n, deleted := current.Remove(args[1])
-		if !deleted {
-			break
+	for _, item := range restrictions.List(args[1]).Items() {
+		for {
+			n, deleted := current.Remove(item)
+			if !deleted {
+				break
+			}
+			processed++
+			current = n
 		}
-		processed++
-		current = n
 	}
 
 	if current.Empty() {
@@ -166,7 +172,7 @@ func del(w io.Writer, args ...string) {
 		c.Restrictions[restrictions.TypeFromString[typ]] = current
 	}
 
-	if err := WriteConfig(c); err != nil {
+	if err := restrictions.WriteConfig(c); err != nil {
 		fmt.Fprintf(w, "failed to update config: %v\n", err)
 		return
 	}
@@ -175,10 +181,10 @@ func del(w io.Writer, args ...string) {
 }
 
 func print(w io.Writer) {
-	c, err := ReadConfig()
+	c, err := restrictions.ReadConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(w, "failed to read config %s: %v\n", MustConfigPath(), err)
+			fmt.Fprintf(w, "failed to read config %s: %v\n", restrictions.ConfigPath(), err)
 			return
 		}
 		fmt.Fprintln(w, "{}")
@@ -202,13 +208,13 @@ func types(w io.Writer) {
 }
 
 func commit(out io.Writer, in io.Reader) {
-	c, err := ReadConfig()
+	c, err := restrictions.ReadConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(out, "failed to read config %s: %v\n", MustConfigPath(), err)
+			fmt.Fprintf(out, "failed to read config %s: %v\n", restrictions.ConfigPath(), err)
 			return
 		}
-		c = &Config{}
+		c = &restrictions.Config{}
 	}
 
 	for t := restrictions.Type(1); t < restrictions.Type(restrictions.TypeEnd); t++ {
@@ -228,25 +234,30 @@ func commit(out io.Writer, in io.Reader) {
 
 		fmt.Fprintf(out, "commit ? (yes/no): ")
 		b := make([]byte, 3)
-		bufio.NewReader(in).Read(b)
+		r := bufio.NewReader(in)
+		r.Reset(in)
+		r.Read(b)
 		if string(b) != "yes" {
 			fmt.Fprintf(out, "aborting...\n")
 			continue
 		}
 		if err := diff.Commit(); err != nil {
-			fmt.Fprintf(out, "failed to commit: %v, aborting...\n", err)
-			continue
+			if !errors.Is(err, restrictions.ErrPartialCommit) {
+				fmt.Fprintf(out, "failed to commit: %v, aborting...\n", err)
+				continue
+			}
+			fmt.Fprintf(out, "partially commited state to the OS, continuing\nfailed operations: %v\n", err)
 		}
 	}
 
 	// shallow clone, doesn't matter since we're dealing with strings.
-	c.LastCommited = &Config{
+	c.LastCommited = &restrictions.Config{
 		LastCommited: nil,
 		Version:      c.Version,
 		Restrictions: maps.Clone(c.Restrictions),
 	}
 
-	if err := WriteConfig(c); err != nil {
+	if err := restrictions.WriteConfig(c); err != nil {
 		fmt.Fprintf(out, "failed to update config: %v\n", err)
 		return
 	}

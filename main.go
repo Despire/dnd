@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/user"
+
+	"github.com/Despire/dnd/restrictions"
 )
 
 func main() {
@@ -13,7 +16,12 @@ func main() {
 }
 
 func run() error {
-	if err := CreateConfigDir(); err != nil {
+	// cache the user info.
+	if _, err := user.Current(); err != nil {
+		return fmt.Errorf("failed to retrieve current user: %w", err)
+	}
+
+	if err := restrictions.CreateConfigDir(); err != nil {
 		return fmt.Errorf("failed to create directory for storing configuration: %w", err)
 	}
 

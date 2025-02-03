@@ -1,4 +1,4 @@
-package main
+package restrictions
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/Despire/dnd/atomicfile"
-	"github.com/Despire/dnd/restrictions"
 )
 
 type Config struct {
@@ -17,15 +16,15 @@ type Config struct {
 	// Version of the config
 	Version int64
 	// Currently stored restrictions.
-	Restrictions map[restrictions.Type]restrictions.List
+	Restrictions map[Type]List
 }
 
 func ReadConfig() (*Config, error) {
-	if _, err := os.Stat(MustConfigPath()); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(ConfigPath()); errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 
-	contents, err := os.ReadFile(MustConfigPath())
+	contents, err := os.ReadFile(ConfigPath())
 	if err != nil {
 		return nil, err
 	}
@@ -45,24 +44,18 @@ func WriteConfig(c *Config) error {
 	if err != nil {
 		return err
 	}
-	if err := atomicfile.Write(MustConfigPath(), b, os.ModePerm); err != nil {
+	if err := atomicfile.Write(ConfigPath(), b, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to atomically write config: %w", err)
 	}
 	return nil
 }
 
-func MustConfigPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get retrieve home directory: %v", err))
-	}
-	return fmt.Sprintf("%s/.dnd_config/.config", home)
-}
+func ConfigPath() string { return fmt.Sprintf("%s/.dnd_config/.config", home) }
 
 func CreateConfigDir() error {
-	dir := filepath.Dir(MustConfigPath())
+	dir := filepath.Dir(ConfigPath())
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-		return os.MkdirAll(filepath.Dir(MustConfigPath()), os.ModePerm)
+		return os.MkdirAll(filepath.Dir(ConfigPath()), os.ModePerm)
 	}
 	return nil
 }

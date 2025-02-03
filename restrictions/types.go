@@ -4,13 +4,31 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 )
 
-// ErrPartialSync is returned when not all items could be checked
-// for a 100% synchronization.
-var ErrPartialSync = errors.New("partially synchronized state")
+var home = ""
+
+func init() {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	home = h
+}
+
+var (
+	// ErrPartialSync is returned when not all items could be checked
+	// for a 100% synchronization.
+	ErrPartialSync = errors.New("partially synchronized state")
+
+	// ErrPartialCommit is returned when not all items could be commited
+	// at the OS level, meaning not all items from the configuration
+	// will take effect.
+	ErrPartialCommit = errors.New("partially commited state")
+)
 
 const (
 	// DndPrefix used throughout the domain restrictions to identify which are maintained by the program.
@@ -121,7 +139,9 @@ func (d *Diff) Commit() error {
 	}
 
 	if d.Type == Application {
-		// TODO:
+		if err := d.applicationCommit(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

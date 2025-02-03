@@ -12,6 +12,6 @@ func NewApplication(item string) RApplication {
 	}
 }
 
-func SyncApplications() ([]RApplication, error) {
-	panic("not implemented")
-}
+func SyncApplications() ([]RApplication, error) { panic("not implemented") }
+
+func (d *Diff) applicationCommit() error { panic("not implemented") }
