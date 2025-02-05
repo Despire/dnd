@@ -3,6 +3,7 @@
 package atomicfile
 
 import (
+	"errors"
 	"os"
 )
 
@@ -11,5 +12,5 @@ import (
 // file it will be renamed to the targeted file. The rename operation
 // is atomic on POSIX systems.
 func Write(name string, contents []byte, perm os.FileMode) (err error) {
-	panic("not implemented for windows")
+	return errors.New("not implemented for windows")
 }

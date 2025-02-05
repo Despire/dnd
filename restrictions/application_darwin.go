@@ -54,14 +54,14 @@ func SyncApplications() ([]RApplication, error) {
 	}
 
 	var restrictions []RApplication
-	var errAll error
+	var errSynchronized error
 
 dir:
 	for _, e := range entries {
 		target := filepath.Join(parentDir, e.Name())
 		b, err := os.ReadFile(target)
 		if err != nil {
-			errAll = errors.Join(errAll, fmt.Errorf("failed to read file %s: %w", target, err))
+			errSynchronized = errors.Join(errSynchronized, fmt.Errorf("failed to read file %s: %w", target, err))
 			continue
 		}
 
@@ -74,7 +74,7 @@ dir:
 				if err == io.EOF {
 					break
 				}
-				errAll = errors.Join(errAll, fmt.Errorf("failed decoding file %s: %w", target, err))
+				errSynchronized = errors.Join(errSynchronized, fmt.Errorf("failed decoding file %s: %w", target, err))
 				continue dir
 			}
 
@@ -83,13 +83,13 @@ dir:
 				switch current.Name.Local {
 				case "key":
 					if err := d.DecodeElement(&currentKey, &current); err != nil {
-						errAll = errors.Join(errAll, fmt.Errorf("failed to decode key token %#v, file: %s: %w", current, target, err))
+						errSynchronized = errors.Join(errSynchronized, fmt.Errorf("failed to decode key token %#v, file: %s: %w", current, target, err))
 						continue dir
 					}
 				case "string":
 					var keyValue string
 					if err := d.DecodeElement(&keyValue, &current); err != nil {
-						errAll = errors.Join(errAll, fmt.Errorf("failed to decode key token %#v, file: %s: %w", current, target, err))
+						errSynchronized = errors.Join(errSynchronized, fmt.Errorf("failed to decode key token %#v, file: %s: %w", current, target, err))
 						continue dir
 					}
 					switch currentKey {
@@ -110,11 +110,11 @@ dir:
 		}
 	}
 
-	if errAll != nil && len(restrictions) > 0 {
-		errAll = fmt.Errorf("%w: %w", ErrPartialSync, errAll)
+	if errSynchronized != nil && len(restrictions) > 0 {
+		errSynchronized = fmt.Errorf("%w: %w", ErrPartialSync, errSynchronized)
 	}
 
-	return restrictions, errAll
+	return restrictions, errSynchronized
 }
 
 func (d *Diff) applicationCommit() error {
@@ -154,7 +154,7 @@ func (d *Diff) applicationCommit() error {
 </plist>
 `
 
-	var errAll error
+	var errCommited error
 	var commited int
 
 	for _, d := range d.Delete {
@@ -163,7 +163,7 @@ func (d *Diff) applicationCommit() error {
 		err := os.Remove(app.metadata.file)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				errAll = errors.Join(errAll, fmt.Errorf("failed to delete synced file %s: %w", app.metadata.file, err))
+				errCommited = errors.Join(errCommited, fmt.Errorf("failed to delete synced file %s: %w", app.metadata.file, err))
 				continue
 			}
 		}
@@ -177,7 +177,7 @@ func (d *Diff) applicationCommit() error {
 		cmd.Stdout = &output
 		cmd.Stderr = &output
 		if err := cmd.Run(); err != nil {
-			errAll = errors.Join(errAll, fmt.Errorf("pkill removed for %s, but failed to disable it, a retry may be worth: %w: %s", app.metadata.label, err, output.String()))
+			errCommited = errors.Join(errCommited, fmt.Errorf("pkill removed for %s, but failed to disable it, a retry may be worth: %w: %s", app.metadata.label, err, output.String()))
 			continue
 		}
 	}
@@ -189,7 +189,7 @@ func (d *Diff) applicationCommit() error {
 		contents := fmt.Sprintf(contentsTemplate, app.Pattern, app.metadata.label, app.Pattern, logs, logs)
 
 		if err := atomicfile.Write(app.metadata.file, []byte(contents), 0644); err != nil {
-			errAll = errors.Join(errAll, fmt.Errorf("failed to write file %s: %w", app.metadata.file, err))
+			errCommited = errors.Join(errCommited, fmt.Errorf("failed to write file %s: %w", app.metadata.file, err))
 			continue
 		}
 
@@ -202,14 +202,14 @@ func (d *Diff) applicationCommit() error {
 		cmd.Stdout = &output
 		cmd.Stderr = &output
 		if err := cmd.Run(); err != nil {
-			errAll = errors.Join(errAll, fmt.Errorf("pkill configured for %s, but failed to immediately launch it, a retry may be worth:%w: %s", app.metadata.file, err, output.String()))
+			errCommited = errors.Join(errCommited, fmt.Errorf("pkill configured for %s, but failed to immediately launch it, a retry may be worth:%w: %s", app.metadata.file, err, output.String()))
 			continue
 		}
 	}
 
-	if errAll != nil && commited > 0 {
-		errAll = fmt.Errorf("%w:%w", ErrPartialCommit, errAll)
+	if errCommited != nil && commited > 0 {
+		errCommited = fmt.Errorf("%w:%w", ErrPartialCommit, errCommited)
 	}
 
-	return errAll
+	return errCommited
 }
